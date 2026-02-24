@@ -9,6 +9,7 @@ import json
 
 app = FastAPI()
 
+# Global variables
 
 standard_params: List[str] = []
 parse_params: List[str] = []
