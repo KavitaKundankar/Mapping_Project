@@ -15,7 +15,7 @@ function App() {
     const formData = new FormData()
     formData.append('file', standardFile)
 
-    try {
+    try { 
       const res = await fetch('http://localhost:8001/api/upload-standard', {
         method: 'POST',
         body: formData
