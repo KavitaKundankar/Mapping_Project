@@ -6,8 +6,9 @@ from typing import List, Dict
 import csv
 import io
 
-from rapidfuzz import process, fuzz
-from Utils.parse_uploded_file import parse_uploaded_file
+from utils.parse_uploded_file import parse_uploaded_file
+from utils.fuzzy_mapping import fuzzy_mapping
+from utils.llm_mapping import llm_mapping
 
 app = FastAPI()
 
@@ -15,8 +16,6 @@ app = FastAPI()
 standard_params: List[str] = []
 parse_params: List[str] = []
 mappings: Dict[str, str] = {}  # parse_param -> standard_param
-
-FUZZY_THRESHOLD = 60  # scores below this = no good match
 
 
 class MappingRequest(BaseModel):
@@ -69,19 +68,11 @@ def get_next_mapping():
 
 @app.get("/api/mapping/fuzzy-suggest")
 def fuzzy_suggest(parse_param: str):
-    """Return top 5 fuzzy matches for a parse_param from standard_params."""
-    if not standard_params:
-        raise HTTPException(status_code=400, detail="No standard parameters loaded yet.")
+    return fuzzy_mapping(parse_param, standard_params)
 
-    results = process.extract(parse_param, standard_params, scorer=fuzz.token_sort_ratio, limit=5)
-    suggestions = [{"standard_param": name, "score": round(score)} for name, score, _ in results]
-    best_score = suggestions[0]["score"] if suggestions else 0
-
-    return {
-        "parse_param": parse_param,
-        "found": best_score >= FUZZY_THRESHOLD,
-        "suggestions": suggestions,
-    }
+@app.get("/api/mapping/llm-suggest")
+def llm_suggest(parse_param: str):
+    return llm_mapping(parse_param, standard_params)
 
 
 @app.post("/api/mapping/save")
