@@ -9,12 +9,4 @@ FOC_MT
 Dist_Run
 Main_Engine_RPM
 Prop_Slip
-Wind_Spd_Knots
-Wind_Dir
-Swell_Ht
-Swell_Dir
-Sea_St
-Cargo_MT
-Ballast_MT
-FW_Rob
-LO_Rob
+

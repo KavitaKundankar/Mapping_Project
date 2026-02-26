@@ -45,11 +45,6 @@ def llm_mapping(parse_param, standard_params):
         response = model.generate_content(prompt)
         
         # Clean up the response text - sometimes Gemini adds markdown code blocks
-        # text = response.text.strip()
-        # if text.startswith("```json"):
-        #     text = text[7:]
-        # if text.endswith("```"):
-        #     text = text[:-3]
         text = re.sub(r"^```json\s*|\s*```$", "", response.text.strip())
         text = text.strip()
 
