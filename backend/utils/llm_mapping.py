@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import google.generativeai as genai
 from fastapi import HTTPException
 from dotenv import load_dotenv
@@ -13,14 +14,12 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 def llm_mapping(parse_param, standard_params):
-    """
-    Use Gemini to suggest the top 5 most likely standard parameters for a given parse parameter.
-    """
+
     if not standard_params:
         raise HTTPException(status_code=400, detail="No standard parameters loaded yet.")
 
     if not GEMINI_API_KEY:
-        # Fallback or error if key is missing
+
         return {
             "parse_param": parse_param,
             "found": False,
@@ -29,7 +28,7 @@ def llm_mapping(parse_param, standard_params):
         }
 
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash-lite')
         
         prompt = f"""
         You are a data mapping assistant. I have a parameter from a report called "{parse_param}".
@@ -40,17 +39,18 @@ def llm_mapping(parse_param, standard_params):
         For each match, provide a confidence score between 0 and 100.
         
         Return the result ONLY as a JSON list of objects, each with "standard_param" and "score" keys.
-        Example: [{{"standard_param": "Engine_Speed", "score": 95}}, ...]
+        Example: [{{"standard_param": "Engine_Speed", "score": 65}}, ...]
         """
 
         response = model.generate_content(prompt)
         
         # Clean up the response text - sometimes Gemini adds markdown code blocks
-        text = response.text.strip()
-        if text.startswith("```json"):
-            text = text[7:]
-        if text.endswith("```"):
-            text = text[:-3]
+        # text = response.text.strip()
+        # if text.startswith("```json"):
+        #     text = text[7:]
+        # if text.endswith("```"):
+        #     text = text[:-3]
+        text = re.sub(r"^```json\s*|\s*```$", "", response.text.strip())
         text = text.strip()
 
         suggestions = json.loads(text)
