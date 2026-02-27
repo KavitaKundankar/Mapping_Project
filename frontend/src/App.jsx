@@ -224,7 +224,7 @@ function App() {
 
               <div className="btn-row">
                 <button onClick={saveMapping} disabled={!selected}>Save Mapping</button>
-                <button onClick={() => { setStep('manual'); setSelected('') }}>Map Manually Instead</button>
+                <button className="btn-back" onClick={() => setStep('idle')}>← Back</button>
               </div>
             </div>
           )}
