@@ -84,6 +84,14 @@ def save_mapping(body: MappingRequest):
     return {"message": "Saved"}
 
 
+@app.delete("/api/mapping")
+def delete_mapping(parse_param: str):
+    if parse_param in mappings:
+        del mappings[parse_param]
+        return {"message": "Deleted"}
+    raise HTTPException(status_code=404, detail="Mapping not found")
+
+
 @app.get("/api/mappings")
 def get_mappings():
     return mappings
@@ -91,6 +99,10 @@ def get_mappings():
 
 @app.get("/api/mappings/download")
 def download_mappings():
+    from datetime import datetime
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    filename = f"{date_str}_mapped_report.csv"
+    
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["parse_param", "standard_param"])
@@ -100,7 +112,7 @@ def download_mappings():
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=mappings.csv"},
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 

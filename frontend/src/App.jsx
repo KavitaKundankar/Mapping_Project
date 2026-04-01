@@ -1,25 +1,39 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 
 const API = 'http://localhost:8001'
 
 function App() {
+  // ── State ───────────────────────────────────────────────────────────
   const [standardFile, setStandardFile] = useState(null)
   const [parseFile, setParseFile] = useState(null)
   const [standardParams, setStandardParams] = useState([])
-  const [currentParam, setCurrentParam] = useState(null)  // { parse_param, mapped, total }
+  const [currentParam, setCurrentParam] = useState(null)
   const [mappings, setMappings] = useState({})
   const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  // Mapping state machine
-  const [step, setStep] = useState('idle')          // 'idle' | 'fuzzy' | 'manual'
+  // Mapping flow state
+  const [step, setStep] = useState('idle') // 'idle' | 'fuzzy' | 'manual'
   const [suggestions, setSuggestions] = useState([])
   const [fuzzyFound, setFuzzyFound] = useState(false)
   const [selected, setSelected] = useState('')
 
-  const [loading, setLoading] = useState(false)
+  // Load initial data
+  useEffect(() => {
+    fetchMappings()
+    fetchStandardParams()
+  }, [])
 
-  // ── Actions ──────────────────────────────────────────────────────────
+  // ── API Actions ──────────────────────────────────────────────────────
+
+  const fetchStandardParams = async () => {
+    try {
+      const res = await fetch(`${API}/api/standard-params`)
+      const data = await res.json()
+      setStandardParams(data)
+    } catch (err) { console.error(err) }
+  }
 
   const uploadStandard = async () => {
     if (!standardFile) return
@@ -30,9 +44,7 @@ function App() {
       const data = await res.json()
       setStandardParams(data.data)
       setMessage(`✅ Standard parameters loaded: ${data.count}`)
-    } catch {
-      setMessage('❌ Failed to upload standard file')
-    }
+    } catch { setMessage('❌ Failed to upload standard file') }
   }
 
   const uploadParse = async () => {
@@ -44,9 +56,7 @@ function App() {
       const data = await res.json()
       setMessage(`✅ Parse parameters loaded: ${data.count}`)
       fetchNext()
-    } catch {
-      setMessage('❌ Failed to upload parse file')
-    }
+    } catch { setMessage('❌ Failed to upload parse file') }
   }
 
   const fetchNext = async () => {
@@ -64,50 +74,28 @@ function App() {
         setMessage('🎉 All parameters have been successfully mapped!')
         fetchMappings()
       }
-    } catch (err) {
-      console.error(err)
-    }
+    } catch (err) { console.error(err) }
   }
 
-  const checkFuzzy = async () => {
-    try {
-      const url = `${API}/api/mapping/fuzzy-suggest?parse_param=${encodeURIComponent(currentParam.parse_param)}`
-      const res = await fetch(url)
-      const data = await res.json()
-      setSuggestions(data.suggestions)
-      setFuzzyFound(data.found)
-      setSelected(data.suggestions[0]?.standard_param || '')
-      setStep('fuzzy')
-      setMessage('')
-    } catch {
-      setMessage('❌ Error fetching suggestions')
-    }
-  }
-
-  const checkAI = async () => {
+  const runSuggestion = async (type = 'fuzzy') => {
     setLoading(true)
-    setMessage('🤖 Consultating AI...')
+    setMessage(type === 'llm' ? '🤖 Consulting AI...' : '')
     try {
-      const url = `${API}/api/mapping/llm-suggest?parse_param=${encodeURIComponent(currentParam.parse_param)}`
+      const endpoint = type === 'llm' ? 'llm-suggest' : 'fuzzy-suggest'
+      const url = `${API}/api/mapping/${endpoint}?parse_param=${encodeURIComponent(currentParam.parse_param)}`
       const res = await fetch(url)
       const data = await res.json()
 
       if (data.error) {
         setMessage(`❌ AI Error: ${data.error}`)
-        setLoading(false)
-        return
+      } else {
+        setSuggestions(data.suggestions)
+        setFuzzyFound(data.found)
+        setSelected(data.suggestions[0]?.standard_param || '')
+        setStep('fuzzy')
       }
-
-      setSuggestions(data.suggestions)
-      setFuzzyFound(data.found)
-      setSelected(data.suggestions[0]?.standard_param || '')
-      setStep('fuzzy')
-      setMessage('✨ AI suggestions ready!')
-    } catch {
-      setMessage('❌ Error fetching AI suggestions')
-    } finally {
-      setLoading(false)
-    }
+    } catch { setMessage('❌ Error fetching suggestions') }
+    finally { setLoading(false) }
   }
 
   const saveMapping = async () => {
@@ -116,40 +104,51 @@ function App() {
       await fetch(`${API}/api/mapping/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          parse_param: currentParam.parse_param,
-          standard_param: selected
-        })
+        body: JSON.stringify({ parse_param: currentParam.parse_param, standard_param: selected })
       })
       fetchNext()
       fetchMappings()
-    } catch {
-      setMessage('❌ Error saving mapping')
-    }
+    } catch { setMessage('❌ Error saving mapping') }
+  }
+
+  const deleteMapping = async (param) => {
+    try {
+      await fetch(`${API}/api/mapping?parse_param=${encodeURIComponent(param)}`, { method: 'DELETE' })
+      fetchMappings()
+      fetchNext()
+    } catch { setMessage('❌ Error deleting mapping') }
   }
 
   const fetchMappings = async () => {
     try {
       const res = await fetch(`${API}/api/mappings`)
       setMappings(await res.json())
-    } catch (err) {
-      console.error(err)
-    }
+    } catch (err) { console.error(err) }
   }
 
   const downloadCSV = async () => {
     try {
       const res = await fetch(`${API}/api/mappings/download`)
       const blob = await res.blob()
+
+      // Try to get filename from Content-Disposition header
+      const disposition = res.headers.get('Content-Disposition')
+      let filename = 'mapped_report.csv'
+      if (disposition && disposition.indexOf('attachment') !== -1) {
+        const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/
+        const matches = filenameRegex.exec(disposition)
+        if (matches != null && matches[1]) {
+          filename = matches[1].replace(/['"]/g, '')
+        }
+      }
+
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'parameter_mappings.csv'
+      a.download = filename
       a.click()
       URL.revokeObjectURL(url)
-    } catch {
-      setMessage('❌ Error downloading CSV')
-    }
+    } catch { setMessage('❌ Error downloading CSV') }
   }
 
   // ── Render ───────────────────────────────────────────────────────────
@@ -190,18 +189,17 @@ function App() {
 
           {step === 'idle' && (
             <div className="btn-row">
-              <button onClick={checkFuzzy} disabled={loading}>🔍 Suggest Matches</button>
-              <button onClick={checkAI} disabled={loading} style={{ background: '#7c3aed' }}>✨ AI Suggest</button>
+              <button onClick={() => runSuggestion('fuzzy')} disabled={loading}>🔍 Suggest Matches</button>
+              <button onClick={() => runSuggestion('llm')} disabled={loading} style={{ background: '#7c3aed' }}>✨ AI Suggest</button>
               <button onClick={() => { setStep('manual'); setSelected('') }} disabled={loading}>✏️ Map Manually</button>
             </div>
           )}
 
           {step === 'fuzzy' && (
             <div>
-              {fuzzyFound
-                ? <div className="status ok">✅ Strong suggestions found. Select the best fit:</div>
-                : <div className="status warn">⚠️ No exact match found. Please verify suggestions:</div>
-              }
+              <div className={fuzzyFound ? 'status ok' : 'status warn'}>
+                {fuzzyFound ? '✅ Strong suggestions found. Select the best fit:' : '⚠️ No exact match found. Please verify suggestions:'}
+              </div>
 
               <table className="suggestion-table">
                 <thead>
@@ -254,15 +252,27 @@ function App() {
         </div>
 
         {Object.keys(mappings).length === 0 ? (
-          <p className="empty-msg">No parameters have been mapped yet.</p>
+          <p className="empty-msg" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No parameters have been mapped yet.</p>
         ) : (
           <table className="mapping-table">
             <thead>
-              <tr><th>Target Parameter</th><th>Standard Name</th></tr>
+              <tr><th>Target Parameter</th><th>Standard Name</th><th style={{ textAlign: 'right' }}>Action</th></tr>
             </thead>
             <tbody>
               {Object.entries(mappings).map(([k, v]) => (
-                <tr key={k}><td>{k}</td><td><strong>{v}</strong></td></tr>
+                <tr key={k}>
+                  <td><code>{k}</code></td>
+                  <td><strong>{v}</strong></td>
+                  <td style={{ textAlign: 'right' }}>
+                    <button
+                      className="btn-delete"
+                      onClick={() => deleteMapping(k)}
+                      style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#f35757ff', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                    >
+                      🗑️ Delete
+                    </button>
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>
